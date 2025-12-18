@@ -1,0 +1,68 @@
+---
+title: "SVM"
+author: "Chengyu Du"
+date: "2025-12-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(e1071)
+```
+
+
+```{r}
+set.seed(123)
+
+ctrl_svm <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+```
+
+
+```{r}
+grid_svm <- expand.grid(
+  sigma = c(0.001, 0.01, 0.1, 0.5),
+  C     = c(0.1, 1, 5, 10)
+)
+
+```
+
+```{r}
+svm_cv <- train(
+  Default ~ ., 
+  data = data_train,
+  method = "svmRadial",
+  trControl = ctrl_svm,
+  tuneGrid = grid_svm,
+  preProcess = c("center", "scale"),
+  metric = "ROC"
+)
+
+svm_cv
+svm_cv$bestTune
+
+```
+
+```{r}
+svm_pred_class <- predict(svm_cv, newdata = data_test)
+svm_pred_prob  <- predict(svm_cv, newdata = data_test, type="prob")[, "Yes"]
+
+cm_svm <- confusionMatrix(
+  svm_pred_class,
+  data_test$Default,
+  positive = "Yes"
+)
+cm_svm
+
+roc_svm <- roc(data_test$Default, svm_pred_prob)
+auc(roc_svm)
+plot(roc_svm, print.auc=TRUE)
+
+```
+

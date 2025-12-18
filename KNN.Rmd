@@ -1,0 +1,122 @@
+---
+title: "KNN"
+author: "Chengyu Du"
+date: "2025-12-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+set.seed(123)
+
+ctrl_knn <- trainControl(
+  method = "cv",                      
+  number = 10,                         
+  classProbs = TRUE,                  
+  summaryFunction = twoClassSummary,  
+  savePredictions = "final"
+)
+
+
+grid_knn <- expand.grid(
+  k = seq(3, 31, by = 2)
+)
+
+knn_model <- train(
+  Default ~ .,
+  data = data_train,
+  method = "knn",
+  trControl = ctrl_knn,
+  preProcess = c("center", "scale"),  
+  tuneGrid = grid_knn,
+  metric = "ROC"                    
+)
+
+knn_model
+knn_model$bestTune   
+
+
+knn_class <- predict(knn_model, newdata = data_test, type = "raw")
+
+
+knn_prob  <- predict(knn_model, newdata = data_test, type = "prob")[, "Yes"]
+
+
+cm_knn <- confusionMatrix(
+  knn_class,
+  data_test$Default,
+  positive = "Yes"
+)
+
+cm_knn
+
+
+roc_knn <- roc(
+  response  = data_test$Default,
+  predictor = knn_prob,
+  levels    = c("No", "Yes")   
+)
+
+plot(roc_knn, 
+     main = "ROC Curve for KNN",
+     col = "blue", 
+     lwd = 2, 
+     print.auc = TRUE, 
+     legacy.axes = TRUE) 
+
+```
+
+
+```{r}
+knn_pca <- train(
+  Default ~ .,
+  data = data_train,
+  method = "knn",
+  trControl = ctrl_knn,     
+  preProcess = c("center", "scale", "pca"),  
+  tuneLength = 20,
+  metric = "ROC"
+)
+
+knn_pca
+```
+
+```{r}
+knn_pca_class <- predict(knn_pca, data_test)
+knn_pca_prob  <- predict(knn_pca, data_test, type="prob")[, "Yes"]
+
+cm_knn_pca <- confusionMatrix(
+  knn_pca_class,
+  data_test$Default,
+  positive="Yes"
+)
+cm_knn_pca
+
+roc_knn_pca <- roc(
+  response=data_test$Default,
+  predictor=knn_pca_prob,
+  levels=c("No","Yes")
+)
+auc(roc_knn_pca)
+```
+
+
+```{r}
+roc_list <- list(
+  "KNN"               = roc_knn
+)
+
+sensitivity_table <- data.frame(
+  Model = names(roc_list),
+  FPR_5  = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.05),
+  FPR_10 = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.10)
+)
+
+sensitivity_table
+
+```
+

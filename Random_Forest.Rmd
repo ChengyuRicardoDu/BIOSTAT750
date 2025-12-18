@@ -1,0 +1,101 @@
+---
+title: "Random_Forest"
+author: "Chengyu Du"
+date: "2025-12-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(randomForest)
+```
+
+```{r}
+ctrl_rf <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,  
+  savePredictions = "final"
+)
+
+
+p <- ncol(data_train) - 1  
+
+grid_rf <- expand.grid(
+  mtry = c(floor(sqrt(p)), floor(p/4), floor(p/2), p)  
+)
+
+
+rf_cv <- train(
+  Default ~ .,
+  data = data_train,
+  method = "rf",
+  metric = "ROC",
+  trControl = ctrl_rf,
+  tuneGrid = grid_rf,
+  ntree = 500,            
+  importance = TRUE
+)
+
+rf_cv
+rf_cv$bestTune         
+varImp(rf_cv)$importance[1:10, ]
+```
+
+```{r}
+rf_class <- predict(rf_cv, newdata = data_test, type = "raw")
+
+cm_rf <- confusionMatrix(
+  rf_class,
+  data_test$Default,
+  positive = "Yes"
+)
+
+cm_rf
+```
+
+```{r}
+rf_prob <- predict(rf_cv, newdata = data_test, type = "prob")[, "Yes"]
+
+roc_rf <- roc(
+  response  = data_test$Default,
+  predictor = rf_prob,
+  levels    = c("No", "Yes")
+)
+
+auc(roc_rf)
+
+plot(roc_rf,
+     main = "ROC Curve for Random Forest (test set)",
+     col = "darkgreen",
+     lwd = 2,
+     print.auc = TRUE,
+     legacy.axes = TRUE)
+```
+
+```{r}
+library(caret)
+library(ggplot2)
+
+importance_df <- varImp(rf_cv, scale = TRUE)
+
+plot(importance_df, top = 15)
+
+```
+
+```{r}
+roc_list <- list(
+  "Random Forest"     = roc_rf
+)
+
+sensitivity_table <- data.frame(
+  Model = names(roc_list),
+  FPR_5  = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.05),
+  FPR_10 = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.10)
+)
+
+sensitivity_table
+```
+

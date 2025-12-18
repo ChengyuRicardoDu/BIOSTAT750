@@ -1,0 +1,138 @@
+---
+title: "QDA"
+author: "Chengyu Du"
+date: "2025-12-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+set.seed(123)
+
+ctrl_qda <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary   
+)
+
+qda_cv <- train(
+  Default ~ .,
+  data = data_train,
+  method = "qda",
+  metric = "ROC",
+  trControl = ctrl_qda
+)
+
+qda_cv 
+```
+
+```{r}
+qda_pred_test_class <- predict(qda_cv, newdata = data_test)
+
+cm_qda <- confusionMatrix(
+  qda_pred_test_class,
+  data_test$Default,
+  positive = "Yes"
+)
+cm_qda
+
+qda_prob_test <- predict(qda_cv, newdata = data_test, type = "prob")[, "Yes"]
+
+roc_qda <- roc(
+  response  = data_test$Default,
+  predictor = qda_prob_test,
+  levels    = c("No", "Yes")
+)
+auc(roc_qda)
+
+plot(roc_qda,
+     main = "ROC Curve for QDA (test set)",
+     col = "darkgreen",
+     lwd = 2,
+     print.auc = TRUE,
+     legacy.axes = TRUE)
+
+```
+
+```{r}
+qda_cv_scaled <- train(
+  Default ~ .,
+  data = data_train,
+  method = "qda",
+  metric = "ROC",
+  trControl = ctrl_qda,
+  preProcess = c("center", "scale")
+)
+qda_cv_scaled
+```
+
+
+```{r}
+set.seed(123)
+
+qda_rda <- train(
+  Default ~ .,
+  data = data_train,
+  method = "rda",
+  metric = "ROC",
+  trControl = ctrl_qda,
+  tuneLength = 10   
+)
+
+qda_rda
+qda_rda$bestTune
+```
+
+```{r}
+rda_pred_class <- predict(qda_rda, newdata = data_test)
+
+cm_rda <- confusionMatrix(
+  rda_pred_class,
+  data_test$Default,
+  positive = "Yes"
+)
+
+cm_rda
+
+rda_prob_yes <- predict(qda_rda, newdata = data_test, type = "prob")[, "Yes"]
+
+roc_rda <- roc(
+  response  = data_test$Default,
+  predictor = rda_prob_yes,
+  levels    = c("No", "Yes")
+)
+
+auc(roc_rda)
+
+plot(roc_rda,
+     main = "ROC Curve for RDA",
+     col = "darkorange",
+     lwd = 2,
+     print.auc = TRUE,
+     legacy.axes = TRUE)
+
+```
+
+
+
+```{r}
+roc_list <- list(
+  "QDA"               = roc_qda,
+  "RDA"               = roc_rda
+)
+
+sensitivity_table <- data.frame(
+  Model = names(roc_list),
+  FPR_5  = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.05),
+  FPR_10 = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.10)
+)
+
+sensitivity_table
+
+```
+

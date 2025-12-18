@@ -1,0 +1,174 @@
+---
+title: "Logistic_Regression"
+author: "Chengyu Du"
+date: "2025-12-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(pROC)
+library(broom)
+library(car)
+library(glmnet)
+```
+
+```{r}
+library(caret)
+
+set.seed(123)
+
+ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+```
+
+```{r}
+logit_cv <- train(
+  Default ~ ., 
+  data = data_train,
+  method = "glm",
+  family = binomial,
+  metric = "ROC",
+  trControl = ctrl
+)
+
+logit_cv
+```
+
+
+```{r include=FALSE}
+set.seed(123)
+
+logit_step_cv <- train(
+  Default ~ .,
+  data = data_train,
+  method = "glmStepAIC",
+  family = binomial,
+  metric = "ROC",
+  trControl = ctrl
+)
+
+```
+
+
+
+
+```{r}
+x_train <- model.matrix(Default ~ ., data = data_train)[, -1]
+y_train <- ifelse(data_train$Default == "Yes", 1, 0)
+
+set.seed(123)
+cv_lasso <- cv.glmnet(
+  x_train, y_train,
+  family = "binomial",
+  alpha = 1,
+  nfolds = 10
+)
+
+plot(cv_lasso)
+cv_lasso$lambda.min
+cv_lasso$lambda.1se
+```
+
+```{r}
+# Prediction
+p_logit <- predict(logit_cv,
+                   newdata = data_test,
+                   type = "prob")[, "Yes"]
+
+
+p_step <- predict(logit_step_cv,
+                  newdata = data_test,
+                  type = "prob")[, "Yes"]
+
+
+x_test <- model.matrix(Default ~ ., data = data_test)[, -1]
+
+p_lasso <- predict(cv_lasso,
+                   newx = x_test,
+                   s = "lambda.1se",
+                   type = "response")[, 1]
+```
+
+
+
+
+```{r}
+
+roc_logit <- roc(response = data_test$Default,
+                 predictor = p_logit,
+                 levels = c("No", "Yes"),  
+                 direction = "<")
+
+roc_step <- roc(response = data_test$Default,
+                predictor = p_step,
+                levels = c("No", "Yes"),
+                direction = "<")
+
+roc_lasso <- roc(response = data_test$Default,
+                 predictor = p_lasso,
+                 levels = c("No", "Yes"),
+                 direction = "<")
+
+
+plot(roc_logit, col = 1, lwd = 2,
+     main = "ROC curves on test set")
+lines(roc_step,  col = 2, lwd = 2)
+lines(roc_lasso, col = 4, lwd = 2)
+legend("bottomright",
+       legend = c(
+         paste0("Logit (AUC=", round(auc(roc_logit), 3), ")"),
+         paste0("Stepwise (AUC=", round(auc(roc_step), 3), ")"),
+         paste0("LASSO (AUC=", round(auc(roc_lasso), 3), ")")
+       ),
+       col = c(1, 2, 4),
+       lwd = 2,
+       bty = "n")
+```
+
+
+
+```{r}
+
+get_sensitivity_at_fpr <- function(roc_obj, target_fpr = 0.05) {
+  
+
+  df <- data.frame(
+    fpr = 1 - roc_obj$specificities,
+    tpr = roc_obj$sensitivities,
+    threshold = roc_obj$thresholds
+  )
+  
+  df_sub <- df[df$fpr <= target_fpr, ]
+  
+  if (nrow(df_sub) == 0) {
+    return(NA)
+  }
+  
+  return(max(df_sub$tpr, na.rm = TRUE))
+}
+
+```
+
+```{r}
+roc_list <- list(
+  "Baseline Logistic" = roc_logit,
+  "Stepwise Logistic" = roc_step,
+  "LASSO Logistic"    = roc_lasso
+)
+
+sensitivity_table <- data.frame(
+  Model = names(roc_list),
+  FPR_5  = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.05),
+  FPR_10 = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.10)
+)
+
+sensitivity_table
+
+```
+

@@ -1,0 +1,95 @@
+---
+title: "Project"
+author: "Chengyu Du"
+date: "2025-12-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(gridExtra)
+library(caret)
+library(dplyr)
+library(tidyr)
+library(gt)
+```
+
+```{r}
+raw_data <- read_excel("default of credit card clients.xls", 
+                       col_names = TRUE, 
+                       skip = 1)
+head(raw_data)
+#str(raw_data)
+```
+
+
+
+```{r}
+clean_data <- raw_data %>%
+  rename(Default = `default payment next month`) %>%
+  select(-ID) 
+
+clean_data$SEX <- as.factor(clean_data$SEX)
+clean_data$EDUCATION <- as.factor(clean_data$EDUCATION)
+clean_data$MARRIAGE <- as.factor(clean_data$MARRIAGE)
+clean_data$Default <- factor(clean_data$Default, 
+                             levels = c(0, 1), 
+                             labels = c("No", "Yes"))
+clean_data <- clean_data %>%
+  filter(!EDUCATION %in% c("0", "5", "6")) %>%
+  filter(MARRIAGE != "0")
+clean_data$EDUCATION <- droplevels(clean_data$EDUCATION)
+clean_data$MARRIAGE <- droplevels(clean_data$MARRIAGE)
+
+pay_vars <- c("PAY_0", "PAY_2", "PAY_3", "PAY_4", "PAY_5", "PAY_6")
+
+clean_data[pay_vars] <- lapply(clean_data[pay_vars], function(x) x + 1)
+clean_data[pay_vars] <- lapply(clean_data[pay_vars], function(x) ifelse(x == 0, -1, x))
+#str(clean_data)
+
+#check class imbalance
+table(clean_data$Default)
+prop.table(table(clean_data$Default))
+```
+
+About 78% of customers are non-defaulters and 22% are defaulters, indicating strong class imbalance. Therefore, error rate alone is not a reliable performance metric for this classification problem.
+
+
+
+
+```{r}
+# Demographics
+plot_cat <- function(data, column, title) {
+  ggplot(data, aes(x = .data[[column]], fill = Default)) +
+    geom_bar(position = "fill") + 
+    labs(title = title, y = "Proportion", x = "") +
+    scale_fill_manual(values = c("#66CC99", "#FF9999")) + 
+    theme_minimal() +
+    theme(legend.position = "bottom")
+}
+
+p1 <- plot_cat(clean_data, "SEX", "Default by Sex")
+p2 <- plot_cat(clean_data, "EDUCATION", "Default by Education")
+p3 <- plot_cat(clean_data, "MARRIAGE", "Default by Marriage")
+
+grid.arrange(p1, p2, p3, ncol = 3)
+
+
+```
+
+```{r}
+set.seed(123)
+
+trainIndex <- createDataPartition(clean_data$Default, p = .7, 
+                                  list = FALSE, 
+                                  times = 1)
+
+data_train <- clean_data[ trainIndex,]
+data_test  <- clean_data[-trainIndex,]
+
+dim(data_train)
+dim(data_test)
+```
+

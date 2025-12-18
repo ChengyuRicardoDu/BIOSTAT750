@@ -1,0 +1,99 @@
+---
+title: "LDA"
+author: "Chengyu Du"
+date: "2025-12-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+```
+
+```{r}
+set.seed(123)
+
+ctrl_lda <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary  
+)
+
+lda_cv <- train(
+  Default ~ .,
+  data = data_train,
+  method = "lda",
+  metric = "ROC",
+  trControl = ctrl_lda
+)
+
+lda_cv
+
+```
+
+
+```{r}
+lda_pred_test <- predict(lda_cv, newdata = data_test)
+cm_lda <- confusionMatrix(
+  lda_pred_test,
+  data_test$Default,
+  positive = "Yes"
+)
+cm_lda  
+```
+
+```{r}
+lda_prob_test <- predict(lda_cv, newdata = data_test, type = "prob")[, "Yes"]
+
+roc_lda <- roc(
+  response  = data_test$Default,
+  predictor = lda_prob_test,
+  levels    = c("No", "Yes")
+)
+auc(roc_lda)
+
+plot(roc_lda,
+     main = "ROC Curve for LDA (test set)",
+     col = "blue",
+     lwd = 2,
+     print.auc = TRUE,
+     legacy.axes = TRUE)
+```
+
+
+
+```{r}
+num_vars <- sapply(data_train, is.numeric)
+pca_fit <- prcomp(data_train[, num_vars], scale = TRUE)
+
+train_pca <- data.frame(PC = pca_fit$x[, 1:5],
+                        Default = data_train$Default)
+
+test_pca  <- data.frame(PC = predict(pca_fit, data_test[, num_vars])[, 1:5],
+                        Default = data_test$Default)
+
+lda_pca <- lda(Default ~ ., data = train_pca)
+pred <- predict(lda_pca, newdata = test_pca)
+
+
+auc(roc(response = test_pca$Default,
+        predictor = pred$posterior[, "Yes"]))
+```
+
+
+```{r}
+roc_list <- list(
+  "LDA"               = roc_lda
+)
+
+sensitivity_table <- data.frame(
+  Model = names(roc_list),
+  FPR_5  = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.05),
+  FPR_10 = sapply(roc_list, get_sensitivity_at_fpr, target_fpr = 0.10)
+)
+
+sensitivity_table
+
+```
+
